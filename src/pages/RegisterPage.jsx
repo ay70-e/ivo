@@ -2,34 +2,45 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiPost } from "../api";
 
-export default function LoginPage() {
+export default function RegisterPage() {
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [role, setRole] = useState("مشاهد");
   const [showPassword, setShowPassword] = useState(false);
 
   const navigate = useNavigate();
 
-  async function handleLogin() {
-    if (email.trim() === "" || password.trim() === "") {
-      alert("يرجى إدخال البريد الإلكتروني وكلمة المرور");
+  async function handleRegister() {
+    if (name.trim() === "" || email.trim() === "" || password.trim() === "") {
+      alert("يرجى إدخال جميع البيانات المطلوبة");
       return;
     }
     try {
-      const res = await apiPost("/api/auth/login", { email, password });
-      localStorage.setItem("token", res.token);
-      localStorage.setItem("user", JSON.stringify(res.user));
-      navigate("/dashboard");
-    } catch (err) {
-      alert("فشل تسجيل الدخول. تحقق من بياناتك.");
+      await apiPost("/api/auth/register", { name, email, password, role });
+      alert("تم التسجيل بنجاح! يمكنك الآن تسجيل الدخول.");
+      navigate("/login");
+    } catch {
+      alert("فشل التسجيل. تحقق من البيانات.");
     }
   }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#f2f2f2] p-4">
       <div className="w-full max-w-md bg-white shadow-xl rounded-2xl p-8">
-        <h1 className="text-2xl font-bold text-center mb-6 text-[#1056ab]">تسجيل الدخول</h1>
+        <h1 className="text-2xl font-bold text-center mb-6 text-[#1056ab]">التسجيل</h1>
 
         <div className="flex flex-col gap-4 text-right">
+          <div>
+            <label className="text-sm font-medium text-gray-700">الاسم</label>
+            <input
+              type="text"
+              className="w-full p-3 rounded-xl border mt-1 focus:outline-none focus:ring-2 focus:ring-[#1056ab]"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+
           <div>
             <label className="text-sm font-medium text-gray-700">البريد الإلكتروني</label>
             <input
@@ -58,22 +69,34 @@ export default function LoginPage() {
             </button>
           </div>
 
+          <div>
+            <label className="text-sm font-medium text-gray-700">الدور</label>
+            <select
+              className="w-full p-3 rounded-xl border mt-1 focus:outline-none focus:ring-2 focus:ring-[#1056ab]"
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+            >
+              <option value="مشاهد">مشاهد</option>
+              <option value="مشرف">مشرف</option>
+              <option value="مدير">مدير</option>
+            </select>
+          </div>
+
           <button
-            onClick={handleLogin}
+            onClick={handleRegister}
             className="w-full mt-4 py-3 bg-[#ef6b23] hover:bg-[#e3611f] text-white rounded-xl text-lg font-semibold"
           >
-            دخول
+            تسجيل
           </button>
 
           <p className="text-center mt-4">
+            لديك حساب بالفعل؟{" "}
             <button
-              onClick={() => navigate("/register")}
+              onClick={() => navigate("/login")}
               className="text-[#1056ab] hover:underline"
             >
-              التسجيل
+              تسجيل الدخول
             </button>
-            ليس لديك حساب؟{" "}
-            
           </p>
         </div>
       </div>

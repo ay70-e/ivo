@@ -1,45 +1,54 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { apiGet } from "../api";
 
 export default function ArchivePage() {
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [sortOrder, setSortOrder] = useState("desc");
 
-  const data = [
-    {
-      id: 1,
-      name: "تقرير الموارد البشرية",
-      tag: "HR",
-      date: "2024-12-01",
-      type: "PDF",
-      file: "#",
-      image: "https://via.placeholder.com/50"
-    },
-    {
-      id: 2,
-      name: "تقرير الأنشطة",
-      tag: "Activity",
-      date: "2024-11-10",
-      type: "Image",
-      file: "#",
-      image: "https://via.placeholder.com/50"
-    },
-    {
-      id: 3,
-      name: "تقرير مالي",
-      tag: "Finance",
-      date: "2024-10-05",
-      type: "Excel",
-      file: "#",
-      image: "https://via.placeholder.com/50"
+  const [data, setData] = useState([]);
+
+  useEffect(() => {
+    let mounted = true;
+    async function load() {
+      try {
+        const [news, reports] = await Promise.all([apiGet("/api/news"), apiGet("/api/reports")]);
+        // normalize
+        const mappedNews = news.map((n) => ({
+          id: `news-${n.id}`,
+          origId: n.id,
+          name: n.title,
+          tag: "خبر",
+          date: n.createdAt || n.updatedAt || new Date().toISOString(),
+          type: "خبر",
+          kind: "news",
+        }));
+        const mappedReports = reports.map((r) => ({
+          id: `report-${r.id}`,
+          origId: r.id,
+          name: r.title,
+          tag: "تقرير",
+          date: r.createdAt || r.updatedAt || new Date().toISOString(),
+          type: "تقرير",
+          kind: "reports",
+        }));
+
+        if (mounted) setData([...mappedNews, ...mappedReports]);
+      } catch (err) {
+        console.error("Failed to load archive", err);
+      }
     }
-  ];
+    load();
+    return () => (mounted = false);
+  }, []);
 
   // فلترة البحث
   const filtered = data
     .filter(
       (item) =>
         item.name.toLowerCase().includes(search.toLowerCase()) ||
-        item.tag.toLowerCase().includes(search.toLowerCase())
+        (item.tag || "").toLowerCase().includes(search.toLowerCase())
     )
     .sort((a, b) =>
       sortOrder === "asc"
@@ -84,7 +93,6 @@ export default function ArchivePage() {
               <th className="p-3 border">التاريخ</th>
               <th className="p-3 border">الوسم</th>
               <th className="p-3 border">الاسم</th>
-              <th className="p-3 border">الصورة</th>
             </tr>
           </thead>
 
@@ -92,27 +100,18 @@ export default function ArchivePage() {
             {filtered.map((item) => (
               <tr key={item.id} className="hover:bg-gray-50 transition">
                 <td className="border p-3">
-                  <a
-                    href={item.file}
+                  <button
+                    onClick={() => navigate(`/${item.kind}/detail/${item.origId}`)}
                     className="text-blue-600 hover:underline"
                   >
-                    فتح الملف
-                  </a>
+                    فتح
+                  </button>
                 </td>
 
                 <td className="border p-3">{item.type}</td>
                 <td className="border p-3">{item.date}</td>
                 <td className="border p-3">{item.tag}</td>
                 <td className="border p-3">{item.name}</td>
-                <td className="border p-3">
-                  <img
-                    src={item.image}
-                    alt={item.name}
-                    className="w-12 h-12 rounded-lg object-cover"
-                  />
-                </td>
-
-                
               </tr>
             ))}
           </tbody>

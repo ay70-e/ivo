@@ -1,20 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-
-const STORAGE_KEY = "reports_data";
-const MANAGERS = {
-  m1: "رئيس قسم الموارد البشرية",
-  m2: "رئيس قسم الأنشطة",
-  m3: "رئيس القسم المالي",
-};
-
-function loadReports() {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  return raw ? JSON.parse(raw) : [];
-}
-function saveReports(arr) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
-}
+import { apiGet, apiPut, apiDelete } from "../../api";
 
 export default function ReportDetailPage() {
   const { id } = useParams();
@@ -22,103 +8,168 @@ export default function ReportDetailPage() {
 
   const [report, setReport] = useState(null);
   const [actionNotes, setActionNotes] = useState("");
+  const [loading, setLoading] = useState(true);
 
+  // تحميل التقرير عند التحميل
   useEffect(() => {
-    const arr = loadReports();
-    const found = arr.find((r) => r.id === id);
-    setReport(found || null);
+    let mounted = true;
+    async function load() {
+      try {
+        const data = await apiGet(`/api/reports/${id}`);
+        if (mounted) setReport(data);
+      } catch (err) {
+        if (mounted) setReport(null);
+        console.error(err);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    }
+    load();
+    return () => (mounted = false);
   }, [id]);
 
-  if (!report) {
-    return <div className="p-6">التقرير غير موجود.</div>;
+  // صلاحيات المستخدم
+  const user = JSON.parse(localStorage.getItem("user") || "null");
+  const canManage = (() => {
+    if (!user) return false;
+    if (user.role === "مدير") return true;
+    if (user.role === "مشرف" && report && report.userId === user.id) return true;
+    return false;
+  })();
+
+  // تحديث الحالة
+  async function updateStatus(newStatus) {
+  try {
+    const payload = { status: newStatus };
+    if (newStatus === "مرفوض") payload.notes = actionNotes || "";
+
+    // استدعاء API
+    const updated = await apiPut(`/api/reports/${id}`, payload);
+
+    // تحديث state مباشرة بالتقرير الجديد
+    setReport(prev => ({ ...prev, ...updated })); 
+
+    alert("تم تحديث حالة التقرير إلى: " + newStatus);
+  } catch (err) {
+    console.error(err);
+    alert("فشل تحديث الحالة");
+  }
+}
+
+
+  // حذف التقرير
+  async function handleDelete() {
+    if (!window.confirm("حذف هذا التقرير؟")) return;
+    try {
+      await apiDelete(`/api/reports/${id}`);
+      navigate("/reports");
+    } catch (err) {
+      console.error(err);
+      alert("فشل حذف التقرير");
+    }
   }
 
-  const updateStatus = (newStatus) => {
-    const arr = loadReports();
-    const idx = arr.findIndex((r) => r.id === id);
-    if (idx === -1) return;
-    arr[idx] = {
-      ...arr[idx],
-      status: newStatus,
-      notes: newStatus === "مرفوض" ? actionNotes : "",
-      updatedAt: new Date().toISOString(),
-    };
-    saveReports(arr);
-    setReport(arr[idx]);
-    alert("تم تحديث حالة التقرير إلى: " + newStatus);
-  };
+  if (loading) return <div className="p-6">جاري التحميل</div>;
+  if (!report) return <div className="p-6">التقرير غير موجود</div>;
 
   return (
-    <div className="p-6 max-w-3xl justify-between mx-auto ">
-     
-      
-      <h1 className="text-2xl font-bold mb-2 text-[#1056ab] text-right">{report.title}</h1>
-      
-      <div  className="text-sm  text-gray-600 text-right mb-4 flex justify-between">
-         <button onClick={() => navigate(-1)} className=" px-3 py-1 border-full rounded mb-4 text-white bg-[#ef6b23]">رجوع</button>
-         {new Date(report.createdAt).toLocaleString()} 
-         <p> {report.author} • {report.department} </p>
+    <div className="p-6 max-w-3xl mx-auto">
+      <button
+        onClick={() => navigate(-1)}
+        className="px-4 py-2 bg-[#ef6b23] text-white rounded mb-4"
+      >
+        رجوع
+      </button>
+
+      <h1 className="text-2xl font-bold mb-2 text-[#1056ab] text-right">
+        {report.title}
+      </h1>
+
+      <div className="text-right text-sm text-gray-600 mb-4">
+        <p>حالة التقرير: {report.status || "غير محددة"}</p>
+        <p>{new Date(report.createdAt).toLocaleString()} :تاريخ النشر</p>
+
       </div>
-      <div  data-aos="fade-zoom-in" className="bg-white p-4 rounded shadow text-right mb-4">
-      <div className=" p-4 text-right mb-4">
-        <strong>نوع التقرير:</strong> {report.type} <br />
-        <strong>حالة التقرير:</strong> {report.status} <br />
-        <strong>مُسنَد إلى:</strong> {MANAGERS[report.assignedTo] || report.assignedTo}
-        
-      </div>
-      <div>
-        <hr />
-      </div>
-      <div className=" p-4 text-right mb-4">
-        <h3 className="font-semibold mb-2">محتوى التقرير</h3>
-        <p className="whitespace-pre-wrap">{report.textContent || "(لا يوجد محتوى نصي)"}</p>
-      </div>
-       <div>
-        <hr />
-      </div>
-      <div className=" p-4  text-right mb-4">
+
+      {/* الملفات المرفقة */}
+      <div className="bg-white p-4 rounded shadow text-right mb-4">
         <h3 className="font-semibold mb-2">الملفات المرفقة</h3>
-        <ul>
-          {report.files && report.files.length > 0 ? (
-            report.files.map((f, i) => (
-              <li key={i} className="mb-2 flex items-center justify-between">
+        {report.fileUrls && report.fileUrls.length > 0 ? (
+          <ul className="space-y-2">
+            {report.fileUrls.map((file, i) => (
+              <li
+                key={i}
+                className="flex justify-between items-center border p-2 rounded"
+              >
                 <div className="flex gap-2">
-                  <a href={f.dataUrl} target="_blank" rel="noreferrer" className="px-3 py-1 bg-blue-600 text-white rounded">فتح</a>
-                  <a href={f.dataUrl} download={f.name} className="px-3 py-1 bg-green-600 text-white rounded">تحميل</a>
+                 
+                  <a
+                    href={`${import.meta.env.VITE_API_URL}${file}`}
+                    download
+                    className="text-green-600 underline"
+                  >
+                    تحميل
+                  </a>
+
                 </div>
-                
-                <div className="text-sm">
-                  {f.name} • {(f.size / 1024).toFixed(1)} KB
-                </div>
-                
+                                 <span>ملف {i + 1}</span>
+
               </li>
-            ))
-          ) : (
-            <div className="text-sm text-gray-500">لا يوجد ملفات مرفقة.</div>
-          )}
-        </ul>
+            ))}
+          </ul>
+        ) : (
+          <div className="text-sm text-gray-500">لا يوجد ملفات مرفقة.</div>
+        )}
       </div>
-      <div>
-        <hr />
-      </div>
-      {/* Manager actions */}
-      <div className=" p-4 ">
-        <h3 className="font-semibold mb-2">إجراءات المراجع</h3>
 
-        <div className="mb-3">
-          <label className="block mb-1">ملاحظات (عند الرفض)</label>
-          <textarea className="w-full p-3 border rounded text-right" rows={3} value={actionNotes} onChange={(e) => setActionNotes(e.target.value)} />
+      {/* إجراءات المراجع */}
+      {canManage && (
+        <div className="p-4 bg-white rounded shadow">
+          <h3 className="font-semibold mb-2">إجراءات المراجع</h3>
+          <textarea
+            className="w-full p-3 border rounded text-right"
+            rows={3}
+            placeholder="ملاحظات عند الرفض"
+            value={actionNotes}
+            onChange={(e) => setActionNotes(e.target.value)}
+          />
+          <div className="flex gap-2 justify-end mt-2">
+            <button
+              onClick={() => updateStatus("قيد المراجعة")}
+              className="px-3 py-1 bg-yellow-500 text-white rounded"
+            >
+              وضع قيد المراجعة
+            </button>
+            <button
+              onClick={() => updateStatus("معتمد")}
+              className="px-3 py-1 bg-green-600 text-white rounded"
+            >
+              اعتماد
+            </button>
+            <button
+              onClick={() => {
+                if (
+                  !actionNotes.trim() &&
+                  !window.confirm(
+                    "لم تكتب ملاحظات. هل تريد المتابعة والرفض بدون ملاحظات؟"
+                  )
+                )
+                  return;
+                updateStatus("مرفوض");
+              }}
+              className="px-3 py-1 bg-red-600 text-white rounded"
+            >
+              رفض
+            </button>
+            <button
+              onClick={handleDelete}
+              className="px-3 py-1 bg-red-800 text-white rounded"
+            >
+              حذف التقرير
+            </button>
+          </div>
         </div>
-
-        <div className="flex gap-2 justify-end">
-          <button onClick={() => updateStatus("قيد المراجعة")} className="px-3 py-1 bg-yellow-500 text-white rounded">وضع قيد المراجعة</button>
-          <button onClick={() => updateStatus("معتمد")} className="px-3 py-1 bg-green-600 text-white rounded">اعتماد</button>
-          <button onClick={() => {
-            if (!actionNotes.trim()) { if(!confirm('لم تكتب ملاحظات. هل تريد المتابعة والرفض بدون ملاحظات؟')) return; }
-            updateStatus("مرفوض");
-          }} className="px-3 py-1 bg-red-600 text-white rounded">رفض</button>
-        </div>
-      </div></div>
+      )}
     </div>
   );
 }
